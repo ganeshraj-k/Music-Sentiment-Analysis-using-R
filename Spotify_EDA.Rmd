@@ -1,0 +1,800 @@
+---
+title: "Sentiment Analysis of Spotify Data - EDA Part"
+output: html_notebook
+---
+
+
+```{r}
+library(tidyverse)
+library(spotifyr) # spotify api 
+library(tidytext)
+library(rgenius) # genius api 
+library(wordcloud)
+library(wordcloud2)
+```
+
+```{r}
+# Install ggridges package
+install.packages("ggridges")
+
+# Load ggridges package
+library(ggridges)
+```
+
+```{r}
+devtools::install_github('charlie86/spotifyr') # spotify 
+```
+
+
+```{r}
+# Authenticate Spotify 
+
+access_token <- get_spotify_access_token(
+      client_id="694b3d6cc44c4bc9b1ddd0debb625714",
+      client_secret="00012038b8bb439eb1d31a673f02a78f")
+```
+
+```{r}
+# Set up authentication for Genius API
+
+Sys.setenv(GENIUS_API_TOKEN = 'svE9xETWjRF_YczqaEIna2dBChd6_6EegcxhabQkk32O-8OzFoWRkwsL4YtCd11p')
+```
+
+
+## Extracting Audio Features of Harry Styles songs
+
+```{r}
+Harry_styles <- get_artist_audio_features('Harry Styles')
+```
+
+## Extracting all albums of Harry Styles
+
+```{r}
+Harry <- get_artist_albums('6KImCVD70vtIoJWnq6nGn3')
+```
+
+
+```{r}
+# creating an empty list to store the data frames
+album_list <- list()
+
+# iterating over the id values in harry data frame
+for (id in Harry$id) {
+  # calling get_albums() function for each id and store the result in a data frame
+  album_data <- get_albums(id)
+  # adding the resulting data frame to the list
+  album_list[[id]] <- album_data
+}
+
+# combining all data frames into a single data frame using the bind_rows() function
+albums_df <- bind_rows(album_list)
+```
+
+## Columns of Audio Features Extracted df
+
+```{r}
+colnames(Harry_styles)
+```
+
+## Renaming column name for easy understanding
+
+```{r}
+Harry_styles <- Harry_styles %>% rename("id" = "album_id")
+colnames(Harry_styles)
+```
+## Column names of Albums extracted df
+
+```{r}
+colnames(Harry)
+```
+
+## Combined df
+
+```{r}
+colnames(albums_df)
+```
+
+
+```{r}
+# Merging all 3 dataframes 
+merged_df <- full_join(Harry, albums_df, by = "id")
+
+# joining the resulting data frame with the tracks_df data frame by the id column
+merged_df <- full_join(merged_df, Harry_styles, by = "id")
+
+# checking the resulting data frame
+merged_df
+```
+
+## Removing redundant and unnecarry columns from the dataframe
+
+```{r}
+df <- select(merged_df, -name.x, -release_date.x, -total_tracks.x, -uri.x, -type.x, -artists.y, -album_group.x, -album_type.x, -artists.x, -images.x, -external_ids.upc, -available_markets.x, -href.x, -external_urls.spotify.x, -release_date_precision.x, -album_group.y, -album_type.y, -available_markets.y, -copyrights, -href.y, -images.y, -name.y, -release_date.y, -release_date_precision.y, -total_tracks.y, -type.y, -uri.y, -external_urls.spotify.y, -tracks.href,-tracks.limit, -tracks.next,  -tracks.offset, -tracks.previous, -analysis_url, -available_markets, -explicit, -disc_number, -track_href, -is_local, -track_preview_url, -type, -track_uri, -external_urls.spotify, -external_urls.spotify)
+```
+
+```{r}
+head(df,5)
+```
+
+```{r}
+colnames(df)
+```
+
+
+```{r}
+# group by the id column
+ged_df <- df %>% 
+  group_by(id) %>% 
+  # sort each group by the popularity column in descending order
+  arrange(desc(popularity)) 
+
+# checking the resulting data frame
+head(ged_df, 5)
+```
+
+```{r}
+ggplot(df, aes(x = album_name, y = tracks.total, fill = artist_name)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.8) +
+  scale_fill_brewer(palette = "Paired") +
+  labs(x = "Album Name", y = "Total Tracks", title = "Total Tracks by Album",
+       subtitle = "Grouped by Artist Name", fill = "Artist Name") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 18, face = "bold"),
+        plot.subtitle = element_text(size = 14),
+        axis.title = element_text(size = 12, face = "bold"),
+        axis.text = element_text(size = 10),
+        legend.title = element_text(size = 12, face = "bold"),
+        legend.text = element_text(size = 10))
+```
+## As we see a lot NA values for Harry Styles we have limited album data so, decided to get rid of NA rows.
+
+```{r}
+# drop rows where any of the column value is NA
+df <- na.omit(df)
+head(df,5)
+```
+
+## Now plotting after removing NA rows.
+
+```{r}
+ggplot(df, aes(x = album_name, y = tracks.total, fill = artist_name)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.8) +
+  scale_fill_brewer(palette = "Paired") +
+  labs(x = "Album Name", y = "Total Tracks", title = "Total Tracks by Album",
+       subtitle = "Grouped by Artist Name", fill = "Artist Name") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 18, face = "bold"),
+        plot.subtitle = element_text(size = 14),
+        axis.title = element_text(size = 12, face = "bold"),
+        axis.text = element_text(size = 10),
+        legend.title = element_text(size = 12, face = "bold"),
+        legend.text = element_text(size = 10))
+```
+
+## Extracting unique album ids
+
+```{r}
+unique(df$id)
+```
+
+## Plotting Density plots for different features.
+
+```{r}
+ggplot(df, aes(x = danceability, fill = album_name)) +
+  geom_density(alpha = 0.4) +
+  scale_fill_manual(values = c("#E69F00", "#56B4E9", "#009E73")) +
+  labs(title = "Distribution of Danceability by Album",
+       x = "Value", y = "Density") +
+  theme_minimal()
+```
+
+
+```{r}
+ggplot(df, aes(x = valence, fill = album_name)) +
+  geom_density(alpha = 0.4) +
+  scale_fill_manual(values = c("#E69F00", "#56B4E9", "#009E73")) +
+  labs(title = "Distribution of Valence by Album",
+       x = "Value", y = "Density") +
+  theme_minimal()
+```
+
+```{r}
+ggplot(df, aes(x = loudness, fill = album_name)) +
+  geom_density(alpha = 0.4) +
+  scale_fill_manual(values = c("#E69F00", "#56B4E9", "#009E73")) +
+  labs(title = "Distribution of Loudness by Album",
+       x = "Value", y = "Density") +
+  theme_minimal()
+```
+
+
+```{r}
+ggplot(df, aes(x = tempo, fill = album_name)) +
+  geom_density(alpha = 0.4) +
+  scale_fill_manual(values = c("#E69F00", "#56B4E9", "#009E73")) +
+  labs(title = "Distribution of Tempo by Album",
+       x = "Value", y = "Density") +
+  theme_minimal()
+```
+
+
+```{r}
+ggplot(df, aes(x = album_name, fill = key_mode)) + 
+  geom_bar(position = "stack", alpha = 0.8) +
+  labs(title = "Key Note Distribution by Album", x = "Album", y = "Count", fill = "Key Note") +
+  theme_minimal()
+```
+
+
+
+```{r}
+gaga <- get_artist_audio_features('Lady Gaga')
+```
+
+
+```{r}
+gaga
+```
+
+## Extracting Genre wise comparison data
+
+```{r}
+# Define the genres for which you want to get the top 5 artists
+genres <- c("rock", "pop", "hip-hop", "electronic", "country")
+
+# Initialize an empty data frame to store the results
+df <- data.frame()
+
+# Loop over the genres and get the top 5 artists for each genre
+for (genre in genres) {
+  artists <- get_genre_artists(genre = genre, limit = 5)
+  df <- rbind(df, data.frame(genre = genre, artist = artists$name))
+}
+```
+
+
+```{r}
+# Filter df to create a data frame of the top 5 artists for each genre
+rock_data <- df[df$genre == "rock", ]
+pop_data <- df[df$genre == "pop", ]
+hiphop_data <- df[df$genre == "hip-hop", ]
+electronic_data <- df[df$genre == "electronic", ]
+country_data <- df[df$genre == "country", ]
+```
+
+```{r}
+rock_data
+```
+
+
+
+
+```{r}
+# Create a bar chart of the top artists for each genre
+ggplot(df, aes(x = artist, fill = genre)) +
+  geom_bar() +
+  coord_flip() +
+  labs(x = "Artist", y = "Number of Plays", title = "Top 5 Artists by Genre")
+```
+
+## Generating word Clouds for each artist in each genre
+
+```{r}
+library(wordcloud)
+# Loop over the genres and get the top 5 artists for each genre
+for (genre in genres) {
+  artists <- get_genre_artists(genre = genre, limit = 10)
+  
+  # Loop over the artists and get the top tracks
+  for (artist_id in artists$id) {
+    top_tracks <- get_artist_top_tracks(artist_id)
+    track_names <- top_tracks$name
+    
+    # Generate a word cloud for the artist's top tracks
+    wordcloud(track_names, scale=c(3,0.5), min.freq=1, max.words=15, random.order=FALSE, colors=brewer.pal(8, "Dark2"))
+    title(paste0("Word cloud for ", genre, " artist ", get_artist(artist_id)$name))
+  }
+}
+```
+
+## Retrieves audio features of Billie Eilish's albums, removes duplicates, and returns the closest matching artist's audio features using the get_artist_audio_features function.
+
+```{r}
+billie_eilish <- get_artist_audio_features(
+  artist = "Billie Eilish",
+  include_groups = "album",
+  return_closest_artist = TRUE,
+  dedupe_albums = TRUE,
+  market = NULL,
+  authorization = access_token
+)
+```
+
+## Fetches albums, singles, appearances, and compilations of an artist with the given ID (Billie Eilish), up to a limit of 20, using the get_artist_albums function.
+
+```{r}
+bi_id <- "6qqNVTkY8uBg9cP3Jd7DAH"
+
+bi<- get_artist_albums(
+  id = bi_id,
+  include_groups = c("album", "single", "appears_on", "compilation"),
+  market = NULL,
+  limit = 20,
+  offset = 0,
+  authorization = access_token,
+  include_meta_info = FALSE
+)
+```
+
+## Creates an empty list to store data frames, iterates over the artist's album IDs, retrieves album information using the `get_albums` function, and combines all data frames into a single data frame using the `bind_rows` function.
+
+```{r}
+# create an empty list to store the data frames
+album_list1 <- list()
+
+# iterate over the id values in harry data frame
+for (id in bi$id) {
+  # call get_albums() function for each id and store the result in a data frame
+  album_data<- get_albums(id, authorization = access_token)
+  # add the resulting data frame to the list
+  album_list1[[id]] <- album_data
+}
+
+# combine all data frames into a single data frame using the bind_rows() function
+bi_albums_df <- bind_rows(album_list1)
+```
+
+## Renames the 'album_id' column in the Billie Eilish data frame, merges it with the album data frame on the 'id' column, and displays the first 5 rows of the resulting data frame.
+
+```{r}
+# remaining the column
+billie_eilish <- billie_eilish%>% rename("id" = "album_id")
+
+# Merging all dataframes 
+bi_merged_df <- full_join(billie_eilish, bi_albums_df,by ="id")
+
+# check the resulting data frame
+head(bi_merged_df,5)
+```
+
+```{r}
+unique(bi_merged_df$id)
+```
+
+## dropping unnecessary columns 
+
+```{r}
+
+bi_df <- select(bi_merged_df, -album_type.x, -album_release_date_precision, -analysis_url, -available_markets.x, -explicit, -track_href, -is_local, -external_urls.spotify.y, -tracks.href, -tracks.limit, -tracks.next, -tracks.offset, -tracks.previous, -artists.x, -disc_number, -type.x, -track_uri, -external_urls.spotify.x, -album_type.y, -available_markets.y, -copyrights, -href, -external_ids.upc, -uri, -name, -label, -images, -type.y, -tracks.total, -track_preview_url, -release_date_precision)
+```
+
+## Groups the cleaned data frame by the 'id' column, sorts each group by the 'popularity' column in descending order, and displays the resulting data frame.
+
+```{r}
+# group by the id column
+bi_ged_df <- bi_df %>% 
+  group_by(id) %>% 
+  # sort each group by the popularity column in descending order
+  arrange(desc(popularity)) 
+
+# check the resulting data frame
+bi_ged_df
+```
+
+## Extracts and displays the name of the first unique album from the sorted data frame.
+
+```{r}
+b_alb <- head(unique(bi_ged_df$album_name),1)
+b_alb
+```
+
+## considering top 10 albums 
+
+```{r}
+b_alb_df <- subset(bi_ged_df, album_name %in% b_alb)
+b_alb_df
+```
+
+## Next, use the same code to extract data for Taylor Swift.
+
+```{r}
+taylor_swift <- get_artist_audio_features(
+  artist = "Taylor Swift",
+  include_groups = "album",
+  return_closest_artist = TRUE,
+  dedupe_albums = TRUE,
+  market = NULL,
+  authorization = access_token
+)
+```
+
+
+```{r}
+ts_id <- "06HL4z0CvFAxyc27GXpf02"
+
+ts<- get_artist_albums(
+  id = ts_id,
+  include_groups = c("album", "single", "appears_on", "compilation"),
+  market = NULL,
+  limit = 20,
+  offset = 0,
+  authorization = access_token,
+  include_meta_info = FALSE
+)
+```
+
+
+```{r}
+# create an empty list to store the data frames
+album_list3 <- list()
+
+# iterate over the id values in harry data frame
+for (id in ts$id) {
+  # call get_albums() function for each id and store the result in a data frame
+  album_data<- get_albums(id, authorization = access_token)
+  # add the resulting data frame to the list
+  album_list3[[id]] <- album_data
+}
+
+# combine all data frames into a single data frame using the bind_rows() function
+ts_albums_df <- bind_rows(album_list3)
+```
+
+
+```{r}
+# remaining the column
+taylor_swift <- taylor_swift %>% rename("id" = "album_id")
+```
+
+
+```{r}
+# Merging all dataframes 
+ts_merged_df <- full_join(taylor_swift, ts_albums_df,by ="id")
+
+# check the resulting data frame
+head(ts_merged_df,5)
+```
+
+```{r}
+unique(ts_merged_df$id)
+```
+
+```{r}
+# dropping unnecessary columns 
+
+ts_df <- select(ts_merged_df, -album_type.x, -album_release_date_precision, -analysis_url, -available_markets.x, -explicit, -track_href, -is_local, -external_urls.spotify.y, -tracks.href, -tracks.limit, -tracks.next, -tracks.offset, -tracks.previous, -artists.x, -disc_number, -type.x, -track_uri, -external_urls.spotify.x, -album_type.y, -available_markets.y, -copyrights, -href, -external_ids.upc, -uri, -name, -label, -images, -type.y, -tracks.total, -track_preview_url, -release_date_precision)
+```
+
+```{r}
+# group by the id column
+ts_ged_df <- ts_df %>% 
+  group_by(id) %>% 
+  # sort each group by the popularity column in descending order
+  arrange(desc(popularity)) 
+
+# check the resulting data frame
+ts_ged_df
+```
+
+```{r}
+ts_alb <- head(unique(ts_ged_df$album_name),1)
+ts_alb
+```
+
+## Next, use the same code to extract data for Linkin Park.
+
+```{r}
+
+Linkin_Park <- get_artist_audio_features(
+  artist = "Linkin Park",
+  include_groups = "album",
+  return_closest_artist = TRUE,
+  dedupe_albums = TRUE,
+  market = NULL,
+  authorization = access_token
+)
+```
+
+
+```{r}
+LP_id <- "6XyY86QOPPrYVGvF9ch6wz"
+
+LP_albums <- get_artist_albums(
+  id = LP_id,
+  include_groups = c("album", "single", "appears_on", "compilation"),
+  market = NULL,
+  limit = 20,
+  offset = 0,
+  authorization = access_token,
+  include_meta_info = FALSE
+)
+```
+
+```{r}
+# Create an empty list to store the data frames
+album_list2 <- list()
+
+# Iterate over the id values in the artist_albums data frame
+for (id in LP_albums$id) {
+  album_data1 <- get_albums(id, authorization = access_token)
+  # Add the resulting data frame to the list
+  album_list2[[id]] <- album_data1
+}
+
+# Combine all data frames into a single data frame using the bind_rows() function
+LP_albums_df <- bind_rows(album_list2)
+
+```
+
+```{r}
+Linkin_Park <- Linkin_Park %>% rename("id" = "album_id")
+```
+
+```{r}
+# Merging all dataframes 
+LP_merged_df <- full_join(LP_albums_df, LP_albums, by = "id")
+
+LP_merged_df <- full_join(LP_merged_df, Linkin_Park, by = "id")
+
+```
+
+```{r}
+LP_df <- select(LP_merged_df, -name.x, -release_date.x, -total_tracks.x, -uri.x, -type.x, -artists.y, -album_group.x, -album_type.x, -artists.x, -images.x, -external_ids.upc, -available_markets.x, -href.x, -external_urls.spotify.x, -release_date_precision.x, -album_group.y, -album_type.y, -available_markets.y, -copyrights, -href.y, -images.y, -name.y, -release_date.y, -release_date_precision.y, -total_tracks.y, -type.y, -uri.y, -external_urls.spotify.y, -tracks.href,-tracks.limit, -tracks.next,  -tracks.offset, -tracks.previous, -analysis_url, -available_markets, -explicit, -disc_number, -track_href, -is_local, -track_preview_url, -type, -track_uri, -external_urls.spotify, -external_urls.spotify)
+
+```
+
+```{r}
+# Group by the id column and sort each group by the popularity column in descending order
+LP_grouped_df <- LP_df %>%
+  group_by(id) %>%
+  arrange(desc(popularity))
+```
+
+```{r}
+lp_alb <- head(unique(LP_grouped_df$album_name),1)
+lp_alb
+```
+
+## Lastly, use the same code to extract data for Eminem.
+
+```{r}
+
+eminem <- get_artist_audio_features(
+  artist = "Eminem",
+  include_groups = "album",
+  return_closest_artist = TRUE,
+  dedupe_albums = TRUE,
+  market = NULL,
+  authorization = access_token
+)
+```
+
+
+```{r}
+em_id <- "7dGJo4pcD2V6oG8kP0tJRR"
+
+em_albums <- get_artist_albums(
+  id = em_id,
+  include_groups = c("album", "single", "appears_on", "compilation"),
+  market = NULL,
+  limit = 20,
+  offset = 0,
+  authorization = access_token,
+  include_meta_info = FALSE
+)
+```
+
+```{r}
+# Create an empty list to store the data frames
+album_list4 <- list()
+
+# Iterate over the id values in the artist_albums data frame
+for (id in em_albums$id) {
+  album_data <- get_albums(id, authorization = access_token)
+  # Add the resulting data frame to the list
+  album_list4[[id]] <- album_data
+}
+
+# Combine all data frames into a single data frame using the bind_rows() function
+em_albums_df <- bind_rows(album_list4)
+
+```
+
+```{r}
+eminem <- eminem %>% rename("id" = "album_id")
+```
+
+```{r}
+# Merging all dataframes 
+em_merged_df <- full_join(em_albums_df, em_albums, by = "id")
+
+em_merged_df <- full_join(em_merged_df, eminem, by = "id")
+
+```
+
+```{r}
+em_df <- select(em_merged_df, -name.x, -release_date.x, -total_tracks.x, -uri.x, -type.x, -artists.y, -album_group.x, -album_type.x, -artists.x, -images.x, -external_ids.upc, -available_markets.x, -href.x, -external_urls.spotify.x, -release_date_precision.x, -album_group.y, -album_type.y, -available_markets.y, -copyrights, -href.y, -images.y, -name.y, -release_date.y, -release_date_precision.y, -total_tracks.y, -type.y, -uri.y, -external_urls.spotify.y, -tracks.href,-tracks.limit, -tracks.next,  -tracks.offset, -tracks.previous, -analysis_url, -available_markets, -explicit, -disc_number, -track_href, -is_local, -track_preview_url, -type, -track_uri, -external_urls.spotify, -external_urls.spotify)
+
+```
+
+```{r}
+# Group by the id column and sort each group by the popularity column in descending order
+em_grouped_df <- em_df %>%
+  group_by(id) %>%
+  arrange(desc(popularity))
+```
+
+```{r}
+em_alb <- head(unique(em_grouped_df$album_name),1)
+em_alb
+```
+
+```{r}
+# Filter the data frames for the most popular album for each artist
+ts_filtered <- ts_ged_df %>% dplyr::filter(album_name == "Midnights")
+em_filtered <- em_grouped_df %>% dplyr::filter(album_name == "Music To Be Murdered By")
+lp_filtered <- LP_grouped_df %>% dplyr::filter(album_name == "Meteora 20th Anniversary Edition")
+be_filtered <- bi_ged_df %>% dplyr::filter(album_name == "WHEN WE ALL FALL ASLEEP, WHERE DO WE GO?")
+# Combine the filtered data frames into one combined data frame
+combined_df <- bind_rows(ts_filtered, em_filtered, lp_filtered, be_filtered)
+
+# Keep only the relevant columns
+combined_df <- combined_df %>% dplyr::select(artist_name, album_name, id,track_name, danceability,valence, speechiness,tempo, key_mode)
+
+combined_df
+```
+
+```{r}
+# Plot a box plot for valence
+boxplot_valence <-ggplot(combined_df, aes(x = artist_name, y = valence, fill = artist_name)) +
+  geom_boxplot(alpha=0.6) +
+  labs(title = "Valence Distribution by Artist",
+       x = "Artist Name", y = "Valence Score") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 18, face = "bold"),
+        axis.title = element_text(size = 12, face = "bold"),
+        axis.text = element_text(size = 10),
+        legend.title = element_text(size = 12, face = "bold"),
+        legend.text = element_text(size = 10)) +
+  guides(fill = FALSE)
+boxplot_valence 
+```
+
+```{r}
+library(tidyverse)
+
+stats <- combined_df %>%
+  group_by(artist_name) %>%
+  summarise(
+    min_tempo = min(tempo),
+    max_tempo = max(tempo),
+    q1_tempo = quantile(tempo, 0.25),
+    median_tempo = median(tempo),
+    q3_tempo = quantile(tempo, 0.75)
+  )
+
+stats
+```
+
+## Overall, Eminem and Linkin Park have a wider range of valence scores, suggesting their music covers a broader spectrum of emotions, while Billie Eilish and Taylor Swift tend to have lower valence scores, indicating a more somber or melancholic tone in their music.
+
+```{r}
+# Plot a box plot for danceability
+boxplot_dance <-ggplot(combined_df, aes(x = artist_name, y = danceability, fill = artist_name)) +
+  geom_boxplot(alpha=0.6) +
+  labs(title = "Danceability Distribution by Artist",
+       x = "Artist Name", y = "Danceability Score") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 18, face = "bold"),
+        axis.title = element_text(size = 12, face = "bold"),
+        axis.text = element_text(size = 10),
+        legend.title = element_text(size = 12, face = "bold"),
+        legend.text = element_text(size = 10)) +
+  guides(fill = FALSE)
+boxplot_dance
+```
+
+## In summary, Eminem's music tends to have the highest danceability, followed by Billie Eilish and Taylor Swift. Linkin Park's music generally has the lowest danceability among the four artists.
+
+```{r}
+# Plot a box plot for speechiness
+boxplot_speech <- ggplot(combined_df, aes(x = artist_name, y = speechiness, fill = artist_name)) +
+  geom_boxplot(alpha=0.6) +
+  labs(title = "Speechiness Distribution by Artist",
+       x = "Artist Name", y = "Speechiness Score") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 18, face = "bold"),
+        axis.title = element_text(size = 12, face = "bold"),
+        axis.text = element_text(size = 10),
+        legend.title = element_text(size = 12, face = "bold"),
+        legend.text = element_text(size = 10)) +
+  guides(fill = FALSE)
+boxplot_speech
+```
+
+```{r}
+# Plot a box plot for tempo
+
+boxplot_tempo <- ggplot(combined_df, aes(x = artist_name, y = tempo, fill = artist_name)) +
+  geom_boxplot(alpha=0.6) +
+  labs(title = "Tempo Distribution by Artist",
+       x = "Artist Name", y = "Tempo Score") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 18, face = "bold"),
+        axis.title = element_text(size = 12, face = "bold"),
+        axis.text = element_text(size = 10),
+        legend.title = element_text(size = 12, face = "bold"),
+        legend.text = element_text(size = 10)) +
+  guides(fill = FALSE)
+boxplot_tempo
+
+```
+
+## Overall, the tempo of the four artists' music varies, with Eminem generally having higher tempos, followed by Linkin Park, Taylor Swift, and Billie Eilish. The tempo ranges and median values suggest that each artist has a distinct musical style, with varying levels of energy and pacing.
+
+```{r}
+custom_colors1 <- c("#FF0000", "#FF7F00", "#FFFF00", "#7FFF00", "#00FF00", "#00FF7F", "#00FFFF", "#007FFF", "#0000FF", "#7F00FF", "#FF00FF", "#FF007F", "#8B0000", "#FF4500", "#FFD700", "#ADFF2F", "#32CD32", "#66CDAA", "#00CED1", "#4682B4", "#483D8B", "#9400D3", "#FF1493")
+
+# Create a stacked bar plot
+key_plot <-ggplot(combined_df, aes(x = artist_name, fill = key_mode)) +
+  geom_bar(position = "stack", alpha = 0.8) +
+  labs(title = "Key Distribution by Artist", x = "Artist", y = "Count", fill = "Key Mode") +
+  scale_fill_manual(name = "Key Mode", values = c(custom_colors1, "grey")) +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 18, face = "bold"),
+        axis.title = element_text(size = 12, face = "bold"),
+        axis.text = element_text(size = 10),
+        legend.title = element_text(size = 12, face = "bold"),
+        legend.text = element_text(size = 10))
+key_plot
+
+```
+
+```{r}
+library(dplyr)
+
+# Create the data frame from the given data
+key_data <- data.frame(
+  artist_name = c(rep("Billie Eilish", 10), rep("Eminem", 12), rep("Linkin Park", 21), rep("Taylor Swift", 9)),
+  key_mode = c("A major", "C major", "C# major", "D# major", "E major", "F minor", "F# minor", "G major", "G# major", "G# minor",
+               "A major", "A# minor", "C# major", "D major", "D minor", "D# major", "D# minor", "E minor", "F major", "F minor", "F# minor", "G# major",
+               "A major", "A minor", "A# major", "A# minor", "B major", "B minor", "C major", "C minor", "C# major", "C# minor", "D major", "D# major", "D# minor", "E major", "E minor", "F# major", "F# minor", "G major", "G minor", "G# major", "G# minor",
+               "A major", "A# major", "C major", "D major", "E major", "E minor", "G major", "G minor", "G# major"),
+  count = c(1, 2, 1, 1, 2, 1, 1, 2, 1, 2,
+            2, 6, 11, 3, 2, 1, 1, 5, 3, 2, 3, 1,
+            8, 1, 1, 9, 4, 1, 1, 1, 16, 8, 4, 1, 6, 4, 5, 5, 4, 2, 1, 3, 3,
+            2, 1, 6, 2, 4, 2, 6, 1, 2))
+
+# Group by artist_name and arrange in descending order of count
+key_data_grouped <- key_data %>%
+  group_by(artist_name) %>%
+  arrange(desc(count))
+
+# Get the top 3 most used keys for each artist
+top_keys <- key_data_grouped %>%
+  group_by(artist_name) %>%
+  slice_max(count, n = 3)
+
+# Display the top 3 keys for each artist
+print(top_keys)
+
+```
+
+## The data suggests that each artist has their preferred keys in their music. For Billie Eilish, the keys of C, E, and G are the most frequently used, while Eminem favors C#, A#, and E. Linkin Park predominantly uses C#, followed by A# and A, and Taylor Swift often composes songs in C, G, and E keys. These preferences in key selection contribute to the distinct musical styles and atmospheres associated with each artist's work.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

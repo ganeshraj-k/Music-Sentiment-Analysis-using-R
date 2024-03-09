@@ -1,0 +1,395 @@
+---
+title: "senti_analysis_test"
+author: "ganesh raj k"
+date: "2023-04-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(topicmodels)
+library(tm)
+library(viridis)
+library(dplyr)
+library(stringr)
+library(tidyr)
+library(tibble)
+library(tidytext)
+library(textdata)
+library(Hmisc)
+library(sentimentr)
+library(zoo)
+library(flextable)
+library(ggplot2)
+library(syuzhet)
+library(geniusr)
+library(reshape2)
+library(spotifyr)
+library(wordcloud)
+library(wordcloud2)
+Sys.setenv(SPOTIFY_CLIENT_ID = '2218d50ef4344c73a0267be0f7b70d8d')
+Sys.setenv(SPOTIFY_CLIENT_SECRET = 'b366aeede38c455b8117af309e40b945')
+library(topicmodels)
+access_token <- get_spotify_access_token()
+Sys.setenv(GENIUS_API_TOKEN = '45anULhNLkjDkLd_wcUu6RFw_0106xDqzq1TD9fCBUM_urOvwB-ppMIas6qqXl0V')
+
+```
+
+
+#reading the data file
+```{r}
+
+
+lyrics_data <- read.csv("data_full.csv")
+
+head(lyrics_data)
+
+#replacing the hyphens
+lyrics_data <- lyrics_data %>%
+  mutate(artist = chartr("-", " ", artist_name)) %>%
+  mutate(song = chartr("-", " ", song_name))
+
+
+#checking for nulls
+any(is.na(lyrics_data))
+```
+
+#getting the word count of each song
+```{r}
+counter <- function(x){
+  
+  result <- x %>% 
+    tolower %>% 
+    stringr::str_extract_all('\\w+') %>%
+    unlist() %>%
+    length()
+  
+  return(result)
+}
+
+lyrics_data$wordcount <- sapply(lyrics_data$line, counter)
+```
+#removing songs with word count less than 30
+```{r}
+
+
+lyrics_data <- lyrics_data %>%
+  filter(wordcount >= 30)
+```
+#grouping the music by each artist.
+```{r}
+
+
+music_by_artist <- lyrics_data %>% 
+  group_by(artist_name) %>% 
+  summarise(n = n())
+```
+#generating a sample word cloud based on names of artists
+
+```{r}
+
+wordcloud2(music_by_artist %>% top_n(100),
+           size = .5)
+```
+#plotting median number of words in each song per artist
+```{r}
+
+
+lyrics_data %>%
+  group_by(artist_name) %>%
+  summarise(median = median(wordcount)) %>%
+  ggplot(aes(x= artist_name, y = median, fill = artist_name)) +
+  geom_col() +
+  theme_minimal() +
+  labs(
+       x = "",
+       y = "median words") +
+  theme(legend.position = "none")
+```
+
+#removing contractions from the dataset
+
+```{r}
+
+set.seed(42)
+
+data_processed <- lyrics_data %>%  group_by(artist_name) %>%
+  do(sample_n(.,5)) 
+
+
+a <- data_processed
+
+clean = function(x){
+  x = gsub("won't", "will not", x)
+  x = gsub( "ain't", "aren't", x)
+  x = gsub("ain't", "am not", x)
+  x = gsub("aren't", "are not", x)
+  x = gsub("can't", "cannot", x)
+  x = gsub("could've", "could have", x)
+  x = gsub("couldn't", "could not", x)
+  x = gsub("didn't", "did not", x)
+  x = gsub("doesn't", "does not", x)
+  x = gsub("don't", "do not", x)
+  x = gsub("gonna", "going to", x)
+  x = gsub("gotta", "got to", x)
+  x = gsub("hadn't", "had not", x)
+  x = gsub("hasn't", "has not", x)
+  x = gsub("haven't", "have not", x)
+  x = gsub("he'd", "he had", x)
+  x = gsub("he'll", "he will", x)
+  x = gsub("he's", "he is", x)
+  x = gsub("how'd", "how did you" , x)
+  return(x)
+}
+
+removeSpecialChars <- function(x) gsub("[^a-zA-Z0-9 ]", " ", x)
+
+data_processed$line = a$line %>%
+  gsub(pattern = '\\[[^][]*]', replacement = ' ') %>%
+  tolower() %>%
+  clean() %>% 
+  removeSpecialChars() %>%
+  gsub(pattern = '[[:punct:]|[:digit:]]', replacement = ' ')
+
+
+
+
+
+```
+#removing custom stopwordsfrom the data since they do not add any meaning
+```{r}
+myStopwords = c("Oh", "Ah", "Yuh", "Aha", "Yeah", "Uh-huh", "Mm-hmm", "Ooh", "Whoa", "Hee", "La", "Hey", "Sha-la-la", "Na", "Ooh-la-la", "Woah", "Hoo", "Ha-ha", "Yeehaw", "Ho-hey", "Giddyup", "Whee", "Yahoo", "Aye-aye", "Gee", "Yay", "Whoop", "Golly", "Ye-haw", "Alas", "Tut-tut")
+
+df_clean <- data_processed %>% 
+  ungroup() %>% 
+  unnest_tokens(word, line) %>%
+  distinct() %>%
+  filter(!word %in% myStopwords) %>%
+  anti_join(stop_words) %>%
+  filter(nchar(word) > 2) %>% 
+  select(artist_name,song_name,album_name,word)
+```
+
+#cleaned dataset
+```{r}
+
+df_clean %>%
+  group_by(artist_name,song_name) %>%
+  count()  %>%
+  ggplot(aes(x = artist_name, y = n, fill = artist_name)) + 
+  geom_boxplot(show.legend = F) +
+  labs(x = '', y = 'Word Count', title = 'word counts by each artist') +
+  theme_bw()
+```
+#getting the unigrams
+```{r}
+
+
+unigram_tidy <- df_clean %>%
+  group_by(word) %>%
+  count() %>% 
+  ungroup () %>%
+  arrange(desc(n))
+#unigram wordcloud
+wordcloud2(data = unigram_tidy[1:200, ], size = 1, color = brewer.pal(8, 'Dark2'))
+png("monogramWc.png")
+```
+#extracting the bigrams
+```{r}
+
+bigram_token  <-  data_processed %>%
+  select(song_name, artist_name, line) %>% 
+  unnest_tokens(output = bigram, input = line, token = 'ngrams', n = 2)
+
+bigram_token <-  bigram_token %>%
+  separate(bigram, into = c('word1', 'word2'), sep = ' ') %>%
+  filter(!word1 %in% c(myStopwords, stop_words$word)) %>%
+  filter(!word2 %in% c(myStopwords, stop_words$word)) %>% 
+  filter(word1 != word2) %>%
+  unite(col = bigram, word1, word2, sep = ' ') %>%
+  filter(!bigram %in% tolower(gsub("-", " ", (data_processed$artist))))
+
+bigram_tidy = bigram_token %>% 
+  group_by(bigram) %>%
+  count() %>%
+  arrange(desc(n)) %>%
+  ungroup()
+
+#bigram wordcloud
+wordcloud2(bigram_tidy[1:100, ], size = .5, color = brewer.pal(8, 'Dark2'), shape = 'circle')
+```
+#getting counts of negative and positive words using bing lexicon,
+
+```{r}
+
+df_clean %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("red", "blue"), scale = c(1.75, .5) ,
+                   max.words = 300)
+```
+#taking ratio of positive and negative words to see the positivity factor in each song
+```{r}
+
+postive_factor <- df_clean %>% 
+  inner_join(get_sentiments("bing")) %>%
+  group_by(song_name, sentiment) %>%
+  summarise(score = n()) %>%
+  spread(sentiment, score) %>% 
+  ungroup() %>%
+  mutate(ratio = positive / (positive + negative), 
+         song = reorder(song_name, ratio))
+```
+
+# getting nrc lexicon 
+```{r}
+
+nrc = get_sentiments(lexicon = 'nrc')
+```
+#getting sentiments in each song
+```{r}
+
+
+song_sentiments <- df_clean %>%
+  inner_join(nrc) %>%
+  group_by(artist_name, sentiment) %>% 
+  count() %>%
+  ungroup() 
+
+#plotting the sentiments in each song
+ggplot(song_sentiments, aes(x = reorder(sentiment, n), y = n, fill = artist_name)) + 
+  geom_col(show.legend = F) +
+  facet_wrap(artist_name ~., scales = "free") +
+  coord_flip() +
+  labs(x = NULL, y = NULL, title = 'analysing sentiments by each artist') +
+  theme_bw()
+```
+
+```{r}
+
+
+head(song_sentiments , 10)
+```
+
+# getting afinn lexicon
+```{r}
+
+
+afinn = get_sentiments(lexicon = 'afinn')
+head(afinn,10)
+```
+#using affinity lexicon to compare artists in terms of negativity and positivity
+```{r}
+
+
+afinnvals <- df_clean %>%
+  inner_join(afinn) %>%
+  group_by(song_name) %>%
+  mutate(total_score = sum(value)) %>%
+  ungroup() %>%
+  arrange(desc(value))
+ 
+afinnvals %>%
+  ggplot(aes(x = artist_name, y = total_score, fill = artist_name)) + 
+  geom_boxplot(show.legend = F) +
+  labs(x = 'Artist', y = 'Sentiment Score ranges', title = 'range of sentiment score of each artist') +
+  theme_bw()
+```
+
+```{r}
+
+#dropping nulls as taking ratio would cause errors
+postive_factor
+ratio_song2 <- na.omit(postive_factor)
+```
+
+
+```{r}
+
+#plotting the top positive songs
+ratio_song2 %>%
+  top_n(10) %>%
+  ggplot(aes(x = song, y = ratio)) +
+  geom_point(color = "blue", size = 1) +
+  coord_flip() +
+  labs(title = "top positive songs",
+       x = "",
+       caption = "positivity factor") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 10, face = "bold"),
+        panel.grid = element_line(linetype = "dashed", color = "green", size = .5))
+
+```
+# topic modelling
+
+
+
+```{r}
+# Create a text_dump object from the lyrics
+text_dump <- Corpus(VectorSource(lyrics_data$line))
+
+# Convert to lowercase
+text_dump <- tm_map(text_dump, content_transformer(tolower))
+
+# Remove numbers and punctuation
+text_dump <- tm_map(text_dump, removeNumbers)
+text_dump <- tm_map(text_dump, removePunctuation)
+
+# Remove stop words
+text_dump <- tm_map(text_dump, removeWords, stopwords("english"))
+
+# Stem words
+text_dump <- tm_map(text_dump, stemDocument)
+
+# Convert to a document-term matrix
+dtm <- DocumentTermMatrix(text_dump)
+
+```
+
+
+
+```{r}
+# Get word frequencies from DTM
+word_freq <- colSums(as.matrix(dtm))
+
+# Sort words by frequency
+sorted_words <- sort(word_freq, decreasing = TRUE)
+
+# Get top 20 most frequent words
+top_30_words <- head(sorted_words, 30)
+
+# Plot bar chart
+barplot(top_30_words, las = 2, main = "Top 30 Most Frequent Words")
+
+```
+
+
+```{r}
+# Set the number of topics you want to identify
+num_topics <- 10
+
+# Fit the topic model using the LDA algorithm
+lda_model <- LDA(dtm, k = num_topics)
+
+# Print the top terms for each topic
+top_terms <- terms(lda_model, 10)
+print(top_terms)
+
+```
+
+```{r}
+# Convert the matrix of top terms to a data frame
+words_top <- data.frame(topic = rep(1:num_topics, each = 10), term = as.character(top_terms))
+```
+
+
+```{r}
+head(words_top, 10)
+```
+
+
+

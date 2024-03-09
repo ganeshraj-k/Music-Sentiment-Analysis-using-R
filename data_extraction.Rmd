@@ -1,0 +1,187 @@
+---
+title: "test2"
+author: "ganesh raj k"
+date: "2023-04-23"
+output: html_document
+---
+```{r}
+library(geniusr)
+library(tidyverse)
+library(dplyr)
+Sys.setenv(GENIUS_API_TOKEN = '45anULhNLkjDkLd_wcUu6RFw_0106xDqzq1TD9fCBUM_urOvwB-ppMIas6qqXl0V')
+```
+```{r}
+#ids for songs in each album
+
+
+#linkin park
+lp_arr <- c(2387240, 1581	, 85506, 167784, 167786 , 167787, 134095, 167789, 56658	, 167791 , 31964 , 2178516, 74998)
+
+
+#taylor swift
+ty_arr <- c(8442190, 8485907, 8434253, 8445376	, 8485908, 8485905, 8485912, 8485914, 8485915, 8445366, 8485918, 8485919, 8400683)
+
+
+# eminem
+mm_arr <- c('5180476',
+ '5180464',
+ '5180465',
+ '5180452',
+ '5180446',
+ '5180466',
+ '5180439',
+ '5180442',
+ '5180434',
+ '5180467',
+ '5180434',
+ '5180482',
+ '5180468',
+ '5180471',
+ '5180472',
+ '5424850',
+ '5180454',
+ '5180447',
+ '5180451',
+ '5180473')
+
+```
+
+```{r}
+#dummy function
+func2 <- function()
+{}
+```
+
+#function to extract lyrics for a set of song ids
+
+```{r}
+
+get_artist_lyrics <- function() {
+  ids <- c(as.character(songs$song_id))
+  # Create empty dataframe to house them
+  allLyrics <- data.frame()
+  
+  while (length(ids) > 0) {
+    for (id in ids) {
+      tryCatch({
+        allLyrics <- rbind(get_lyrics_id(id), allLyrics)
+        successful <- unique(allLyrics$song_id)
+        ids <- ids[!ids %in% successful]
+        print(paste("done - ", id))
+        print(paste("New length is ", length(ids)))
+      }, error = function(e){})
+    }
+  }
+  return(allLyrics)
+  }
+
+```
+
+```{r}
+print(search_artist("Eminem"))
+print(search_artist("Billie Eilish"))
+print(search_artist("Taylor Swift"))
+print(search_artist("Linkin Park"))
+```
+# Find artist ID
+
+
+
+```{r}
+#get track list of each artist's album
+print(paste( c(get_album_tracklist_search("Eminem" , "Music to be murdered by")$song_title) , collapse = " , "))
+print(paste( c(get_album_tracklist_search("Linkin Park" , "Meteora")$song_title) , collapse = " , "))
+print(paste( c(get_album_tracklist_search("taylor swift" , "Midnights")$song_title) , collapse = " , "))
+print(paste( c(get_album_tracklist_search("Billie Eilish" , "When we all fall asleep, where do we go?")$song_title) , collapse= " , "))
+
+```
+
+```{r}
+get_album_tracklist_search("Taylor Swift" , "1989")
+
+get_lyrics_search("linkin park" ,"Numb")
+```
+
+"Lavender Haze","Maroon","Anti-Hero","Snow On The Beach (Ft. Lana Del Rey)","You're On Your Own, Kid","Midnight Rain","Question...?","Vigilante Shit","Bejeweled","Labyrinth","Karma","Sweet Nothing" ,"Mastermind"
+
+```{r}
+TSlyrics <- get_artist_lyrics(ty_arr)
+LPlyrics <- get_artist_lyrics(lp_arr)
+MMlyrics <- get_artist_lyrics(mm_arr)
+```
+
+
+
+```{r}
+ids <- paste( c(get_album_tracklist_search("Billie Eilish" , "When we all fall asleep, where do we go?")$song_title) , collapse= " , ")
+  # Create empty dataframe to house them
+allLyrics <- data.frame()
+  
+  while (length(ids) > 0) {
+    for (id in ids) {
+      tryCatch({
+        allLyrics <- rbind(get_lyrics_search("billie Eilish" , id), allLyrics)
+        successful <- unique(allLyrics$song_id)
+        ids <- ids[!ids %in% successful]
+        print(paste("done - ", id))
+        print(paste("New length is ", length(ids)))
+      }, error = function(e){})
+    }
+  }
+  
+  
+BElyrics <- allLyrics
+```
+
+```{r}
+
+```
+
+
+
+
+```{r}
+
+TS_final <- aggregate(line ~ song_name,  data= TSlyrics, FUN=paste, collapse='')
+write.csv(TS_final , "taylorlyrics.csv")
+```
+
+```{r}
+LP_final <- aggregate(line ~ song_name,  data= LPlyrics, FUN=paste, collapse='')
+write.csv(LP_final , "LPlyrics.csv")
+```
+
+```{r}
+mm_final <- aggregate(line ~ song_name,  data= MMlyrics, FUN=paste, collapse='')
+write.csv(mm_final ,"mmlyrrics.csv")
+```
+
+```{r}
+mm_final <- aggregate(line ~ song_name,  data= MMlyrics, FUN=paste, collapse='')
+write.csv(mm_final ,"Billie.csv")
+```
+
+
+```{r}
+data_ts <- read.csv("taylorlyrics.csv")
+data_lp <- read.csv("LPlyrics.csv")
+data_MM <- read.csv("mmlyrrics.csv")
+data_be <- read.csv("Billie.csv")
+
+```
+
+```{r}
+
+data_final <- rbind(data_ts, data_lp)
+data_final <- rbind(data_final , data_MM)
+data_final <- rbind(data_final , data_be)
+```
+
+#combining the data into one file
+```{r}
+write.csv( data_final , "data_full.csv")
+
+head(data_final)
+```
+```
+
